@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Research Chat</title>
+<style>
+  :root {
+    --ink: #1b1b18;
+    --paper: #faf8f4;
+    --rule: #d8d3c7;
+    --accent: #a8401f; /* citation rust */
+    --muted: #6e6a60;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Georgia', 'Iowan Old Style', serif;
+    line-height: 1.5;
+  }
+
+  .shell {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 4rem;
+  }
+
+  header {
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  header .eyebrow {
+    font-family: 'Courier New', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  header h1 {
+    margin: 0.25rem 0 0;
+    font-size: 1.6rem;
+    font-weight: 400;
+  }
+
+  .upload-row {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    margin-bottom: 2rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+  }
+
+  #fileInput { display: none; }
+
+  .btn {
+    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    padding: 0.55rem 0.9rem;
+    cursor: pointer;
+  }
+
+  .btn:hover { background: var(--accent); }
+  .btn[disabled] { opacity: 0.4; cursor: default; }
+
+  #uploadStatus { color: var(--muted); }
+
+  .thread {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+  }
+
+  .turn-q {
+    font-weight: 700;
+  }
+
+  .turn-q::before {
+    content: "Q. ";
+    color: var(--accent);
+    font-family: 'Courier New', monospace;
+  }
+
+  .turn-a {
+    border-left: 2px solid var(--rule);
+    padding-left: 1rem;
+  }
+
+  .sources {
+    margin-top: 0.6rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.72rem;
+    color: var(--accent);
+  }
+
+  .sources span {
+    border: 1px solid var(--accent);
+    padding: 0.1rem 0.4rem;
+    margin-right: 0.35rem;
+    display: inline-block;
+    margin-bottom: 0.3rem;
+  }
+
+  form#chatForm {
+    display: flex;
+    gap: 0.6rem;
+    border-top: 1px solid var(--rule);
+    padding-top: 1.25rem;
+  }
+
+  #questionInput {
+    flex: 1;
+    font-family: inherit;
+    font-size: 1rem;
+    padding: 0.6rem 0.7rem;
+    border: 1px solid var(--rule);
+    background: white;
+    color: var(--ink);
+  }
+
+  #questionInput:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .empty-state {
+    color: var(--muted);
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="eyebrow">Research Paper RAG Chat</div>
+      <h1>Ask your documents.</h1>
+    </header>
+
+    <div class="upload-row">
+      <button class="btn" id="uploadBtn">Add a PDF</button>
+      <input type="file" id="fileInput" accept="application/pdf" />
+      <span id="uploadStatus">No documents added yet.</span>
+    </div>
+
+    <div class="thread" id="thread">
+      <p class="empty-state">Upload a paper, then ask it something specific.</p>
+    </div>
+
+    <form id="chatForm">
+      <input type="text" id="questionInput" placeholder="What does the paper say about..." autocomplete="off" />
+      <button type="submit" class="btn" id="askBtn">Ask</button>
+    </form>
+  </div>
+
+  <script>
+    const uploadBtn = document.getElementById('uploadBtn');
+    const fileInput = document.getElementById('fileInput');
+    const uploadStatus = document.getElementById('uploadStatus');
+    const thread = document.getElementById('thread');
+    const chatForm = document.getElementById('chatForm');
+    const questionInput = document.getElementById('questionInput');
+    const askBtn = document.getElementById('askBtn');
+
+    let hasDocuments = false;
+
+    uploadBtn.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      uploadStatus.textContent = `Ingesting "${file.name}"...`;
+      uploadBtn.disabled = true;
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Upload failed');
+
+        uploadStatus.textContent = `Indexed "${file.name}". Ready.`;
+        hasDocuments = true;
+        if (thread.querySelector('.empty-state')) thread.innerHTML = '';
+      } catch (err) {
+        uploadStatus.textContent = `Error: ${err.message}`;
+      } finally {
+        uploadBtn.disabled = false;
+        fileInput.value = '';
+      }
+    });
+
+    chatForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const question = questionInput.value.trim();
+      if (!question) return;
+
+      if (thread.querySelector('.empty-state')) thread.innerHTML = '';
+
+      const qEl = document.createElement('div');
+      qEl.className = 'turn-q';
+      qEl.textContent = question;
+      thread.appendChild(qEl);
+
+      const aEl = document.createElement('div');
+      aEl.className = 'turn-a';
+      aEl.textContent = 'Thinking...';
+      thread.appendChild(aEl);
+
+      questionInput.value = '';
+      askBtn.disabled = true;
+      window.scrollTo(0, document.body.scrollHeight);
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Request failed');
+
+        aEl.textContent = data.answer;
+
+        if (data.sources && data.sources.length > 0) {
+          const srcEl = document.createElement('div');
+          srcEl.className = 'sources';
+          data.sources.forEach(s => {
+            const tag = document.createElement('span');
+            tag.textContent = `${s.source} · p.${s.page}`;
+            srcEl.appendChild(tag);
+          });
+          aEl.appendChild(srcEl);
+        }
+      } catch (err) {
+        aEl.textContent = `Error: ${err.message}`;
+      } finally {
+        askBtn.disabled = false;
+        window.scrollTo(0, document.body.scrollHeight);
+      }
+    });
+  </script>
+</body>
+</html>
