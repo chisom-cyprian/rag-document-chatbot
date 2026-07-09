@@ -25,6 +25,12 @@ uploaded paper (“what programming language is this written in?”) and it
 correctly said the context didn’t contain that information instead of
 guessing. That’s the behavior that actually matters for a RAG system
 not being right, but knowing when it doesn’t know.
+
+
+ ## Demo
+ ![App Screenshot](screenshot.png)
+  
+ 
  ## Architecture
 ```
 PDF upload
